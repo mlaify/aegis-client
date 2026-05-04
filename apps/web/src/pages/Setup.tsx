@@ -114,12 +114,15 @@ export function Setup() {
         setImportStatus("missing document or secrets fields — paste the full export blob");
         return;
       }
+      // Expand seed-format keys (CLI export) to noble's expanded-key format
+      const runtime = cryptoRuntime();
+      parsed.secrets = await runtime.expandCliSecrets(parsed.secrets);
+
       if (savedRelayUrl && !parsed.document.relay_endpoints.includes(savedRelayUrl)) {
         parsed.document.relay_endpoints = [
           ...parsed.document.relay_endpoints,
           savedRelayUrl,
         ];
-        const runtime = cryptoRuntime();
         await runtime.signIdentityDocument(parsed.document, parsed.secrets);
       }
       await createIdentity(parsed.document, parsed.secrets, importPassphrase);
