@@ -194,6 +194,15 @@ export interface CryptoRuntime {
     prekeyKyber768SecretB64?: string;
     senderDocument?: IdentityDocument;
   }): Promise<OpenResult>;
+
+  /** Normalise secrets imported from the CLI (or another source).
+   *
+   *  The CLI stores ML-KEM-768 as a 64-byte FIPS 203 seed and ML-DSA-65 as a
+   *  32-byte FIPS 204 seed. The browser runtime needs the full expanded keys
+   *  (2400-byte DK and 4032-byte signing key respectively). This method detects
+   *  seed-format fields by decoded byte length and expands them in-place.
+   *  Fields already in expanded format are returned unchanged. */
+  expandCliSecrets(secrets: HybridPqPrivateKeyMaterial): Promise<HybridPqPrivateKeyMaterial>;
 }
 
 // ---------------------------------------------------------------------------
@@ -448,6 +457,25 @@ class NobleCryptoRuntime implements CryptoRuntime {
 
     const parsedPayload = JSON.parse(new TextDecoder().decode(plaintext)) as PrivatePayload;
     return { payload: parsedPayload, sigStatus };
+  }
+
+  async expandCliSecrets(secrets: HybridPqPrivateKeyMaterial): Promise<HybridPqPrivateKeyMaterial> {
+    const kyberRaw = fromB64(secrets.kyber768_secret_key_b64);
+    const mldsaRaw = fromB64(secrets.dilithium3_secret_key_b64);
+
+    // ML-KEM-768: CLI stores 64-byte FIPS 203 seed; browser needs 2400-byte DK
+    const expandedKyber =
+      kyberRaw.length === 64 ? ml_kem768.keygen(kyberRaw).secretKey : kyberRaw;
+
+    // ML-DSA-65: CLI stores 32-byte FIPS 204 seed; browser needs 4032-byte signing key
+    const expandedMldsa =
+      mldsaRaw.length === 32 ? ml_dsa65.keygen(mldsaRaw).secretKey : mldsaRaw;
+
+    return {
+      ...secrets,
+      kyber768_secret_key_b64: toB64(expandedKyber),
+      dilithium3_secret_key_b64: toB64(expandedMldsa),
+    };
   }
 }
 

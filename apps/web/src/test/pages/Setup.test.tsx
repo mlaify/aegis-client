@@ -24,6 +24,7 @@ vi.mock("@/lib/crypto", () => ({
       secrets: TEST_SECRETS,
     }),
     signIdentityDocument: vi.fn().mockResolvedValue(undefined),
+    expandCliSecrets: vi.fn().mockImplementation((s: unknown) => Promise.resolve(s)),
   })),
 }));
 
@@ -169,6 +170,11 @@ describe("Setup page — import identity", () => {
     vi.mocked(storage.loadIdentity).mockResolvedValue(null);
     vi.mocked(storage.saveRelayUrl).mockResolvedValue(undefined);
     vi.mocked(storage.createIdentity).mockResolvedValue(undefined);
+    vi.mocked(cryptoLib.cryptoRuntime).mockReturnValue({
+      generateIdentity: vi.fn().mockResolvedValue({ document: { ...TEST_IDENTITY_DOC }, secrets: TEST_SECRETS }),
+      signIdentityDocument: vi.fn().mockResolvedValue(undefined),
+      expandCliSecrets: vi.fn().mockImplementation((s: unknown) => Promise.resolve(s)),
+    } as unknown as ReturnType<typeof cryptoLib.cryptoRuntime>);
   });
 
   it("shows the import section when no identity exists", async () => {
