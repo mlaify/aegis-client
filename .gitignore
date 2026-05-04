@@ -3,3 +3,7 @@ dist/
 build/
 .next/
 .DS_Store
+
+# Rust (Cargo workspace at repo root for apps/mobile/rust/*)
+target/
+**/*.rs.bk
