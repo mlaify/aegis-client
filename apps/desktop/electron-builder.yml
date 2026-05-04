@@ -1,0 +1,52 @@
+appId: io.aegis.desktop
+productName: Aegis
+copyright: Copyright © 2026 Aegis contributors
+
+# What gets packaged into the asar/app.
+files:
+  - dist-electron/**/*
+  - dist-renderer/**/*
+  - package.json
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,readme,test,__tests__,tests,*.d.ts.map,*.js.map}"
+  - "!**/{.DS_Store,.git,.gitignore,.gitattributes}"
+
+directories:
+  output: dist-installers
+  buildResources: build
+
+asar: true
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  # Codesigning + notarization are configured via env at release time
+  # (CSC_LINK / CSC_KEY_PASSWORD / APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD).
+  # Local `package:mac` builds without those vars produce an unsigned dmg.
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Network
+
+# Auto-updater feed configuration is intentionally left unset.
+# Wire `publish:` to a real channel (S3 / GitHub Releases / generic) before
+# cutting the first release. See aegis-client/apps/desktop/README.md for
+# the planned configuration.
+# publish:
+#   provider: github
+#   owner: mlaify
+#   repo: aegis-client
