@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -140,7 +140,7 @@ describe("Setup page", () => {
       }),
       signIdentityDocument: vi.fn().mockResolvedValue(undefined),
     };
-    vi.mocked(cryptoLib.cryptoRuntime).mockReturnValue(mockRuntime as ReturnType<typeof cryptoLib.cryptoRuntime>);
+    vi.mocked(cryptoLib.cryptoRuntime).mockReturnValue(mockRuntime as unknown as ReturnType<typeof cryptoLib.cryptoRuntime>);
 
     renderSetup();
     const [passphraseInput, confirmInput] = screen.getAllByPlaceholderText(/passphrase/i);
@@ -149,5 +149,103 @@ describe("Setup page", () => {
     await user.click(screen.getByRole("button", { name: /Create new identity/i }));
 
     await waitFor(() => expect(mockRuntime.signIdentityDocument).toHaveBeenCalled());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Import identity tests
+// ---------------------------------------------------------------------------
+
+describe("Setup page — import identity", () => {
+  const EXPORT_BLOB = JSON.stringify({
+    version: "aegis-web-export-v1",
+    document: TEST_IDENTITY_DOC,
+    secrets: TEST_SECRETS,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(storage.loadRelayUrl).mockResolvedValue(null);
+    vi.mocked(storage.loadIdentity).mockResolvedValue(null);
+    vi.mocked(storage.saveRelayUrl).mockResolvedValue(undefined);
+    vi.mocked(storage.createIdentity).mockResolvedValue(undefined);
+  });
+
+  it("shows the import section when no identity exists", async () => {
+    renderSetup();
+    // heading and button both contain "Import identity" — match the heading specifically
+    await screen.findByRole("heading", { name: /3\. Import identity/i });
+    expect(screen.getByRole("button", { name: /Import identity/i })).toBeInTheDocument();
+  });
+
+  it("hides the import section when an identity already exists", async () => {
+    vi.mocked(storage.loadIdentity).mockResolvedValue({
+      identity_id: TEST_IDENTITY_ID,
+      aliases: [],
+      supported_suites: [],
+      prekey_secret_count: 0,
+      document: TEST_IDENTITY_DOC,
+    });
+    renderSetup();
+    await screen.findByText(/existing local identity/i);
+    expect(screen.queryByRole("heading", { name: /3\. Import identity/i })).not.toBeInTheDocument();
+  });
+
+  it("imports a valid export blob", async () => {
+    const user = userEvent.setup();
+    renderSetup();
+    const textarea = screen.getByPlaceholderText(/aegis-web-export-v1/i);
+    // fireEvent.change bypasses userEvent's keyboard parser (which chokes on JSON braces)
+    fireEvent.change(textarea, { target: { value: EXPORT_BLOB } });
+    const importPass = screen.getByPlaceholderText(/new passphrase/i);
+    await user.type(importPass, "imported-pass");
+    await user.click(screen.getByRole("button", { name: /Import identity/i }));
+    await waitFor(() => expect(storage.createIdentity).toHaveBeenCalled());
+  });
+
+  it("rejects malformed JSON with a status message", async () => {
+    const user = userEvent.setup();
+    renderSetup();
+    const textarea = screen.getByPlaceholderText(/aegis-web-export-v1/i);
+    fireEvent.change(textarea, { target: { value: "not valid json" } });
+    const importPass = screen.getByPlaceholderText(/new passphrase/i);
+    await user.type(importPass, "pass");
+    await user.click(screen.getByRole("button", { name: /Import identity/i }));
+    await screen.findByText(/invalid JSON/i);
+    expect(storage.createIdentity).not.toHaveBeenCalled();
+  });
+
+  it("rejects JSON missing secrets field", async () => {
+    const user = userEvent.setup();
+    renderSetup();
+    const textarea = screen.getByPlaceholderText(/aegis-web-export-v1/i);
+    fireEvent.change(textarea, { target: { value: JSON.stringify({ document: TEST_IDENTITY_DOC }) } });
+    const importPass = screen.getByPlaceholderText(/new passphrase/i);
+    await user.type(importPass, "pass");
+    await user.click(screen.getByRole("button", { name: /Import identity/i }));
+    await screen.findByText(/missing document or secrets/i);
+    expect(storage.createIdentity).not.toHaveBeenCalled();
+  });
+
+  it("requires a passphrase before importing", async () => {
+    renderSetup();
+    const textarea = screen.getByPlaceholderText(/aegis-web-export-v1/i);
+    fireEvent.change(textarea, { target: { value: EXPORT_BLOB } });
+    await userEvent.setup().click(screen.getByRole("button", { name: /Import identity/i }));
+    await screen.findByText(/enter a passphrase/i);
+    expect(storage.createIdentity).not.toHaveBeenCalled();
+  });
+
+  it("blocks import when identity already exists", async () => {
+    vi.mocked(storage.loadIdentity).mockResolvedValue({
+      identity_id: TEST_IDENTITY_ID,
+      aliases: [],
+      supported_suites: [],
+      prekey_secret_count: 0,
+      document: TEST_IDENTITY_DOC,
+    });
+    renderSetup();
+    await screen.findByText(/existing local identity/i);
+    expect(screen.queryByRole("button", { name: /Import identity/i })).not.toBeInTheDocument();
   });
 });
