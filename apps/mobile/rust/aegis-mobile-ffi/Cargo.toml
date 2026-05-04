@@ -1,0 +1,30 @@
+[package]
+name = "aegis-mobile-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "UniFFI bridge from aegis-crypto / aegis-identity to Swift (iOS) and Kotlin (Android). Powers the apps/mobile React Native client and any other native consumers without re-implementing post-quantum crypto."
+
+[lib]
+# - cdylib: Android (.so) and the FFI surface for cargo test bindings
+# - staticlib: iOS (.a, packaged into an xcframework)
+# - rlib: cross-Rust use (the integration test in tests/)
+crate-type = ["cdylib", "staticlib", "rlib"]
+name = "aegis_mobile_ffi"
+
+# Path deps cross repo boundaries: aegis-core is cloned next to aegis-client
+# under the same workspace root (`mlaify/aegis/`). CI mirrors this layout via
+# a `git clone` of mlaify/aegis-core in the workflow.
+[dependencies]
+aegis-proto = { path = "../../../../../aegis-core/crates/aegis-proto" }
+aegis-crypto = { path = "../../../../../aegis-core/crates/aegis-crypto" }
+aegis-identity = { path = "../../../../../aegis-core/crates/aegis-identity" }
+uniffi = "0.28"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+thiserror = "1"
+
+[dev-dependencies]
+serde_json = "1"

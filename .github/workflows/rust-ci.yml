@@ -1,0 +1,35 @@
+name: Rust CI (apps/mobile)
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout aegis-core sibling for path dependencies
+        run: |
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+          git clone --depth 1 --branch "$BRANCH" https://github.com/mlaify/aegis-core.git aegis-core 2>/dev/null || \
+          git clone --depth 1 --branch main https://github.com/mlaify/aegis-core.git aegis-core
+
+      - name: Expose ../aegis-core path
+        # The Cargo workspace at the repo root expects aegis-core to live one
+        # directory up (the same layout developers use locally under
+        # mlaify/aegis/). The symlink mirrors that into the runner workspace
+        # without restructuring the checkout.
+        run: ln -s "$GITHUB_WORKSPACE/aegis-core" "$GITHUB_WORKSPACE/../aegis-core"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
