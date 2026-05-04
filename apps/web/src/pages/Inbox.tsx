@@ -3,6 +3,12 @@ import type { Envelope } from "@aegis/sdk";
 
 import { VaultSessionPanel } from "@/components/VaultSessionPanel";
 import { type OpenResult, type SigStatus, cryptoRuntime } from "@/lib/crypto";
+import {
+  loadSeen,
+  newEnvelopeIds,
+  saveSeen,
+} from "@/lib/inboxBadge";
+import { notify, setBadge } from "@/lib/platform";
 import { fetchEnvelopes, resolveIdentity } from "@/lib/relay";
 import {
   consumePrekeySecret,
@@ -39,12 +45,38 @@ export function Inbox() {
     try {
       const result = await fetchEnvelopes(relayUrl, identityId);
       setEnvelopes(result);
+      const seen = loadSeen(identityId);
+      const fresh = newEnvelopeIds(result, seen);
+      if (fresh.length > 0) {
+        await notify(
+          "Aegis",
+          fresh.length === 1
+            ? "1 new envelope"
+            : `${fresh.length} new envelopes`,
+        );
+        for (const id of fresh) seen.add(id);
+        saveSeen(identityId, seen);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
   };
+
+  // Drive the OS dock/taskbar badge from un-opened envelope count. On the
+  // browser this is a no-op; on Electron it goes to app.setBadgeCount.
+  useEffect(() => {
+    const unread = Math.max(0, envelopes.length - Object.keys(opened).length);
+    void setBadge(unread);
+  }, [envelopes, opened]);
+
+  // Clear the badge when the user navigates away from the Inbox.
+  useEffect(() => {
+    return () => {
+      void setBadge(0);
+    };
+  }, []);
 
   if (!identityId || !relayUrl) {
     return (
