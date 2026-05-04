@@ -12,7 +12,6 @@
 // in a follow-up; doing so here would just duplicate the wire types.
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
-use serde::{Deserialize, Serialize};
 
 use aegis_crypto::{
     keygen::HybridPqKeyBundle, EnvelopeSigner, EnvelopeVerifier, HybridPqSuite, PayloadCipher,

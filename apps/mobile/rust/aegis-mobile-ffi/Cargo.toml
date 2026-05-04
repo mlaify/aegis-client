@@ -21,7 +21,6 @@ aegis-proto = { path = "../../../../../aegis-core/crates/aegis-proto" }
 aegis-crypto = { path = "../../../../../aegis-core/crates/aegis-crypto" }
 aegis-identity = { path = "../../../../../aegis-core/crates/aegis-identity" }
 uniffi = "0.28"
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
 thiserror = "1"
