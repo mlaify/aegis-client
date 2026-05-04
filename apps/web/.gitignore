@@ -3,3 +3,10 @@ dist/
 .vite/
 *.local
 .DS_Store
+
+# TypeScript incremental build outputs (project references emit these)
+*.tsbuildinfo
+
+# tsc -b emits .d.ts + .js for any included config files; we don't ship them.
+vite.config.js
+vite.config.d.ts
