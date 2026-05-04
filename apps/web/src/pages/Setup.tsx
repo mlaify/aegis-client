@@ -3,6 +3,13 @@ import { useNavigate } from "react-router-dom";
 
 import { cryptoRuntime } from "@/lib/crypto";
 import { createIdentity, loadIdentity, loadRelayUrl, saveRelayUrl } from "@/lib/storage";
+import type { HybridPqPrivateKeyMaterial, IdentityDocument } from "@aegis/sdk";
+
+interface ExportBlob {
+  version: string;
+  document: IdentityDocument;
+  secrets: HybridPqPrivateKeyMaterial;
+}
 
 export function Setup() {
   const navigate = useNavigate();
@@ -14,6 +21,12 @@ export function Setup() {
   const [passphrase, setPassphrase] = useState("");
   const [confirmPassphrase, setConfirmPassphrase] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Import state
+  const [importJson, setImportJson] = useState("");
+  const [importPassphrase, setImportPassphrase] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   useEffect(() => {
     loadRelayUrl().then((u) => {
@@ -78,6 +91,50 @@ export function Setup() {
     }
   };
 
+  const importIdentity = async () => {
+    setImportStatus(null);
+    if (existingIdentityId) {
+      setImportStatus(`an identity already exists (${existingIdentityId}); clear it first`);
+      return;
+    }
+    if (!importPassphrase) {
+      setImportStatus("enter a passphrase to encrypt the imported identity");
+      return;
+    }
+    setImporting(true);
+    try {
+      let parsed: ExportBlob;
+      try {
+        parsed = JSON.parse(importJson) as ExportBlob;
+      } catch {
+        setImportStatus("invalid JSON — paste the full export blob");
+        return;
+      }
+      if (!parsed.document?.identity_id || !parsed.secrets) {
+        setImportStatus("missing document or secrets fields — paste the full export blob");
+        return;
+      }
+      if (savedRelayUrl && !parsed.document.relay_endpoints.includes(savedRelayUrl)) {
+        parsed.document.relay_endpoints = [
+          ...parsed.document.relay_endpoints,
+          savedRelayUrl,
+        ];
+        const runtime = cryptoRuntime();
+        await runtime.signIdentityDocument(parsed.document, parsed.secrets);
+      }
+      await createIdentity(parsed.document, parsed.secrets, importPassphrase);
+      setExistingIdentityId(parsed.document.identity_id);
+      setImportJson("");
+      setImportPassphrase("");
+      setImportStatus(`imported identity ${parsed.document.identity_id}`);
+      navigate("/identity");
+    } catch (error) {
+      setImportStatus(String(error));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <section className="space-y-8">
       <header>
@@ -119,7 +176,7 @@ export function Setup() {
       </div>
 
       <div className="aegis-surface space-y-4 p-6">
-        <h3 className="text-base font-semibold">2. Identity</h3>
+        <h3 className="text-base font-semibold">2. Create identity</h3>
         <p className="text-sm text-slate-600 dark:text-slate-400">
           Generate a fresh hybrid PQ identity (X25519 + ML-KEM-768 +
           Ed25519 + Dilithium3) entirely in this browser. Private halves live
@@ -171,6 +228,44 @@ export function Setup() {
           </div>
         )}
       </div>
+
+      {!existingIdentityId && (
+        <div className="aegis-surface space-y-4 p-6">
+          <h3 className="text-base font-semibold">3. Import identity</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Restore a backup or import an identity exported from another Aegis
+            client. Paste the full export JSON (must contain both{" "}
+            <code className="font-mono">document</code> and{" "}
+            <code className="font-mono">secrets</code> fields).
+          </p>
+          <textarea
+            value={importJson}
+            onChange={(e) => setImportJson(e.target.value)}
+            placeholder='{ "version": "aegis-web-export-v1", "document": { … }, "secrets": { … } }'
+            rows={6}
+            className="aegis-input font-mono text-xs"
+          />
+          <input
+            value={importPassphrase}
+            onChange={(e) => setImportPassphrase(e.target.value)}
+            type="password"
+            placeholder="new passphrase to encrypt the imported identity"
+            className="aegis-input"
+          />
+          <button
+            onClick={importIdentity}
+            className="aegis-button-secondary"
+            disabled={importing || !importJson.trim()}
+          >
+            {importing ? "Importing…" : "Import identity"}
+          </button>
+          {importStatus && (
+            <p className="aegis-mono" role="status">
+              {importStatus}
+            </p>
+          )}
+        </div>
+      )}
     </section>
   );
 }

@@ -19,6 +19,8 @@ export function Identity() {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [locked, setLocked] = useState(isSessionLocked());
+  const [exportJson, setExportJson] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     loadIdentity().then((i) => {
@@ -46,6 +48,12 @@ export function Identity() {
       </section>
     );
   }
+
+  const copyIdentityId = async () => {
+    await navigator.clipboard.writeText(identity.identity_id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   const publishIdentityDoc = async () => {
     if (!relayUrl || !identity.document) {
@@ -94,6 +102,36 @@ export function Identity() {
     }
   };
 
+  const exportIdentity = async () => {
+    setStatus(null);
+    try {
+      const secrets = await loadSecrets();
+      const blob = JSON.stringify(
+        { version: "aegis-web-export-v1", document: identity.document, secrets },
+        null,
+        2,
+      );
+      setExportJson(blob);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  };
+
+  const downloadExport = () => {
+    if (!exportJson) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([exportJson], { type: "application/json" }));
+    a.download = `aegis-identity-${identity.identity_id.slice(-12)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const copyExport = async () => {
+    if (!exportJson) return;
+    await navigator.clipboard.writeText(exportJson);
+    setStatus("copied export JSON to clipboard");
+  };
+
   return (
     <section className="space-y-6">
       <header>
@@ -105,17 +143,42 @@ export function Identity() {
       </header>
 
       <div className="aegis-surface space-y-4 p-6">
-        <Row label="identity_id" value={identity.identity_id} mono />
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-3 dark:border-slate-800">
+          <span className="aegis-mono shrink-0">identity_id</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="font-mono text-sm break-all">{identity.identity_id}</span>
+            <button
+              onClick={copyIdentityId}
+              className="aegis-button-secondary shrink-0 px-2 py-0.5 text-xs"
+              title="Copy to clipboard"
+            >
+              {copied ? "copied" : "copy"}
+            </button>
+          </div>
+        </div>
         <Row label="aliases" value={identity.aliases.join(", ") || "<none>"} />
         <Row
           label="supported_suites"
           value={identity.supported_suites.join(", ") || "<none>"}
         />
         <Row
+          label="relay_endpoints"
+          value={identity.document?.relay_endpoints.join(", ") || "<none>"}
+        />
+        <Row
+          label="signing_keys"
+          value={identity.document?.signing_keys.map((k) => k.key_id).join(", ") || "<none>"}
+        />
+        <Row
+          label="encryption_keys"
+          value={identity.document?.encryption_keys.map((k) => k.key_id).join(", ") || "<none>"}
+        />
+        <Row
           label="prekey_pool"
           value={`${identity.prekey_secret_count} unclaimed local secrets`}
         />
       </div>
+
       <VaultSessionPanel onStatus={setStatus} onLockedChange={setLocked} />
 
       <div className="flex flex-wrap gap-3">
@@ -133,11 +196,44 @@ export function Identity() {
         >
           Publish prekeys (10)
         </button>
-        <button className="aegis-button-secondary" disabled>
+        <button
+          className="aegis-button-secondary"
+          disabled={locked}
+          onClick={exportIdentity}
+        >
           Export
         </button>
       </div>
-      {status && <p className="aegis-mono">{status}</p>}
+
+      {status && <p className="aegis-mono" role="status">{status}</p>}
+
+      {exportJson && (
+        <div className="aegis-surface space-y-3 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">Identity export</p>
+            <div className="flex gap-2">
+              <button className="aegis-button-secondary text-xs px-2 py-0.5" onClick={copyExport}>
+                Copy
+              </button>
+              <button className="aegis-button-secondary text-xs px-2 py-0.5" onClick={downloadExport}>
+                Download
+              </button>
+              <button
+                className="aegis-button-secondary text-xs px-2 py-0.5"
+                onClick={() => setExportJson(null)}
+              >
+                Hide
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-aegis-warn">
+            Keep this file secret — it contains your private key material.
+          </p>
+          <pre className="max-h-64 overflow-y-auto rounded-md bg-slate-100 p-3 text-xs dark:bg-slate-800">
+            {exportJson}
+          </pre>
+        </div>
+      )}
     </section>
   );
 }
