@@ -9,6 +9,7 @@ import {
   resolveIdentity,
 } from "@/lib/relay";
 import { isSessionLocked, loadIdentity, loadRelayUrl, loadSecrets } from "@/lib/storage";
+import { SUITE_HYBRID_PQ } from "@aegis/sdk";
 
 export function Compose() {
   const [to, setTo] = useState("");
@@ -18,11 +19,61 @@ export function Compose() {
   const [relayUrl, setRelayUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [locked, setLocked] = useState(isSessionLocked());
+  const [sending, setSending] = useState(false);
+  const [resolvingRecipient, setResolvingRecipient] = useState(false);
+  const [resolvedRecipient, setResolvedRecipient] = useState<{
+    lookup: string;
+    identity_id: string;
+    supported_suites: string[];
+    relay_endpoints: string[];
+    supportsHybridPq: boolean;
+  } | null>(null);
+  const [recipientError, setRecipientError] = useState<string | null>(null);
 
   useEffect(() => {
     loadIdentity().then((i) => setIdentityReady(i !== null));
     loadRelayUrl().then(setRelayUrl);
   }, []);
+
+  useEffect(() => {
+    if (!relayUrl) return;
+    const lookup = to.trim();
+    if (!lookup) {
+      setResolvedRecipient(null);
+      setRecipientError(null);
+      setResolvingRecipient(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setResolvingRecipient(true);
+      setRecipientError(null);
+      try {
+        const recipient = lookup.startsWith("amp:")
+          ? await resolveIdentity(relayUrl, lookup)
+          : await resolveAlias(relayUrl, lookup);
+        if (cancelled) return;
+        setResolvedRecipient({
+          lookup,
+          identity_id: recipient.identity_id,
+          supported_suites: recipient.supported_suites,
+          relay_endpoints: recipient.relay_endpoints,
+          supportsHybridPq: recipient.supported_suites.includes(SUITE_HYBRID_PQ),
+        });
+      } catch (e) {
+        if (cancelled) return;
+        setResolvedRecipient(null);
+        setRecipientError(String(e));
+      } finally {
+        if (!cancelled) setResolvingRecipient(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [to, relayUrl]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -35,6 +86,11 @@ export function Compose() {
       setStatus("relay URL is not configured");
       return;
     }
+    if (!resolvedRecipient || resolvedRecipient.lookup !== to.trim()) {
+      setStatus("recipient is not resolved yet");
+      return;
+    }
+    setSending(true);
     try {
       const sender = await loadIdentity();
       if (!sender?.document) {
@@ -75,6 +131,8 @@ export function Compose() {
       setTo("");
     } catch (e) {
       setStatus(String(e));
+    } finally {
+      setSending(false);
     }
   };
 
@@ -117,6 +175,48 @@ export function Compose() {
             required
           />
         </Field>
+        <div className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800">
+          <p className="aegis-mono">
+            recipient:{" "}
+            {to.trim()
+              ? resolvingRecipient
+                ? "resolving…"
+                : resolvedRecipient && resolvedRecipient.lookup === to.trim()
+                  ? "resolved"
+                  : "unresolved"
+              : "empty"}
+          </p>
+          {recipientError && (
+            <p className="mt-2 text-aegis-danger break-all">{recipientError}</p>
+          )}
+          {resolvedRecipient && resolvedRecipient.lookup === to.trim() && (
+            <div className="mt-2 space-y-1 text-sm">
+              <p>
+                <span className="aegis-mono">identity_id:</span>{" "}
+                <code className="font-mono break-all">{resolvedRecipient.identity_id}</code>
+              </p>
+              <p>
+                <span className="aegis-mono">relay_endpoints:</span>{" "}
+                {resolvedRecipient.relay_endpoints.join(", ") || "<none>"}
+              </p>
+              <p>
+                <span className="aegis-mono">hybrid PQ suite: </span>
+                {resolvedRecipient.supportsHybridPq ? (
+                  <span className="text-aegis-ok font-medium">supported</span>
+                ) : (
+                  <span className="text-aegis-danger font-medium">
+                    not supported — cannot send
+                  </span>
+                )}
+              </p>
+              {resolvedRecipient.supportsHybridPq && (
+                <p className="aegis-mono text-slate-500">
+                  one-time prekey will be claimed at send
+                </p>
+              )}
+            </div>
+          )}
+        </div>
         <Field label="Subject" hint="encrypted in private payload">
           <input
             value={subject}
@@ -138,10 +238,25 @@ export function Compose() {
           <p className="aegis-mono">
             seal will claim one ML-KEM-768 prekey + sign Ed25519 + Dilithium3
           </p>
-          <button type="submit" className="aegis-button-primary">
-            Seal &amp; send
+          <button
+            type="submit"
+            className="aegis-button-primary"
+            disabled={
+              sending ||
+              locked ||
+              resolvingRecipient ||
+              !to.trim() ||
+              !resolvedRecipient ||
+              resolvedRecipient.lookup !== to.trim() ||
+              !resolvedRecipient.supportsHybridPq
+            }
+          >
+            {sending ? "Sending…" : "Seal & send"}
           </button>
         </div>
+        <p className="aegis-mono">
+          send enabled only when vault is unlocked, recipient resolved, and hybrid PQ supported
+        </p>
 
         {status && (
           <p className="text-sm text-aegis-warn" role="status">

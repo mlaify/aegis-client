@@ -136,6 +136,25 @@ function hybridSign(
 }
 
 // ---------------------------------------------------------------------------
+// Signature verification status (issue #6)
+// ---------------------------------------------------------------------------
+
+/** Four-state classification of an envelope's outer signature, returned by
+ *  openHybridPq alongside the decrypted payload.
+ *
+ *  - verified:    sender document available + signature present + Ed25519 valid
+ *  - failed:      sender document available + signature present + Ed25519 invalid
+ *  - unsigned:    no outer_signature_b64 on the envelope
+ *  - unavailable: signature present but no sender document to verify against
+ */
+export type SigStatus = "verified" | "failed" | "unsigned" | "unavailable";
+
+export interface OpenResult {
+  payload: PrivatePayload;
+  sigStatus: SigStatus;
+}
+
+// ---------------------------------------------------------------------------
 // CryptoRuntime interface (re-exported so callers don't need a second import)
 // ---------------------------------------------------------------------------
 
@@ -166,12 +185,15 @@ export interface CryptoRuntime {
     prekey?: { keyId: string; kyber768PublicKeyB64: string };
   }): Promise<Envelope>;
 
+  /** Decrypt an envelope and classify its outer signature.
+   *  Never throws due to signature failure — sigStatus carries that outcome.
+   *  Only throws on decryption failure (wrong key / corrupted payload). */
   openHybridPq(args: {
     envelope: Envelope;
     recipientSecrets: HybridPqPrivateKeyMaterial;
     prekeyKyber768SecretB64?: string;
     senderDocument?: IdentityDocument;
-  }): Promise<PrivatePayload>;
+  }): Promise<OpenResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -365,26 +387,39 @@ class NobleCryptoRuntime implements CryptoRuntime {
     recipientSecrets: HybridPqPrivateKeyMaterial;
     prekeyKyber768SecretB64?: string;
     senderDocument?: IdentityDocument;
-  }): Promise<PrivatePayload> {
+  }): Promise<OpenResult> {
     const { envelope, recipientSecrets, prekeyKyber768SecretB64, senderDocument } = args;
     const { payload } = envelope;
 
     if (!payload.eph_x25519_public_key_b64 || !payload.mlkem_ciphertext_b64)
       throw new Error("envelope missing hybrid PQ payload fields");
 
-    // Verify Ed25519 sender signature if sender document is available
-    if (senderDocument && envelope.outer_signature_b64) {
+    // --- Signature status classification (never throws) ---
+    let sigStatus: SigStatus;
+    if (!envelope.outer_signature_b64) {
+      sigStatus = "unsigned";
+    } else if (!senderDocument) {
+      sigStatus = "unavailable";
+    } else {
       const canonical = canonicalEnvelopeBytes(envelope);
       const edRec = senderDocument.signing_keys.find((k) => k.algorithm === ALG_ED25519);
-      if (edRec) {
-        const valid = ed25519.verify(
-          fromB64(envelope.outer_signature_b64),
-          canonical,
-          fromB64(edRec.public_key_b64),
-        );
-        if (!valid) throw new Error("Ed25519 outer signature verification failed");
+      if (!edRec) {
+        sigStatus = "unavailable";
+      } else {
+        try {
+          const valid = ed25519.verify(
+            fromB64(envelope.outer_signature_b64),
+            canonical,
+            fromB64(edRec.public_key_b64),
+          );
+          sigStatus = valid ? "verified" : "failed";
+        } catch {
+          sigStatus = "failed";
+        }
       }
     }
+
+    // --- Decryption (throws on failure) ---
 
     // X25519 ECDH
     const x25519SS = x25519.getSharedSecret(
@@ -411,7 +446,8 @@ class NobleCryptoRuntime implements CryptoRuntime {
       throw new Error("decryption failed: wrong key or corrupted data");
     }
 
-    return JSON.parse(new TextDecoder().decode(plaintext)) as PrivatePayload;
+    const parsedPayload = JSON.parse(new TextDecoder().decode(plaintext)) as PrivatePayload;
+    return { payload: parsedPayload, sigStatus };
   }
 }
 
