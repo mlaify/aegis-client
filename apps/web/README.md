@@ -22,6 +22,14 @@ post-quantum-encrypted messages without leaving the page.
 - **Local persistence:** IndexedDB for identity + prekey secrets
   (encrypted at rest with a passphrase-derived AEAD key);
   `localStorage` for non-sensitive UI prefs.
+- **Desktop integration (Electron):** when running inside the
+  [`apps/desktop/`](../desktop/) shell, the renderer detects
+  `window.aegis` and opts into native affordances — OS notifications
+  on inbound envelopes, dock/taskbar badge for unread count, and an
+  optional "Remember on this device" path that wraps the vault
+  passphrase in the OS keychain (Electron `safeStorage`). All of these
+  fall back to no-ops in a plain browser, so the same code paths run
+  in both surfaces.
 
 [noble-pq]: https://github.com/paulmillr/noble-post-quantum
 [noble-curves]: https://github.com/paulmillr/noble-curves
@@ -52,7 +60,10 @@ apps/web/
     └── lib/
         ├── storage.ts     # IndexedDB / localStorage wrapper (stubs)
         ├── relay.ts       # HTTP client for RFC-0004 endpoints
-        └── crypto.ts      # CryptoRuntime interface (impl ships next iter)
+        ├── crypto.ts      # CryptoRuntime interface (impl ships next iter)
+        ├── platform.ts    # window.aegis detection + web-fallback notify/setBadge
+        ├── inboxBadge.ts  # seen-envelope set for de-duping notifications
+        └── desktopVault.ts # opt-in: passphrase memoized via OS keychain
 ```
 
 ## Develop
