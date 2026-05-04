@@ -31,7 +31,17 @@ export function Identity() {
   }, []);
 
   if (loading) {
-    return <div className="aegis-mono">loading identity…</div>;
+    return (
+      <div className="space-y-6" aria-busy="true">
+        <div className="h-8 w-48 animate-pulse rounded-md bg-slate-200 dark:bg-slate-700" />
+        <div className="aegis-surface space-y-4 p-6">
+          <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+          <div className="h-4 w-1/2 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+          <div className="h-4 w-5/6 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+          <div className="h-4 w-2/3 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        </div>
+      </div>
+    );
   }
 
   if (!identity) {
