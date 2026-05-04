@@ -1,19 +1,26 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { loadRelayUrl, saveRelayUrl } from "@/lib/storage";
+import { cryptoRuntime } from "@/lib/crypto";
+import { createIdentity, loadIdentity, loadRelayUrl, saveRelayUrl } from "@/lib/storage";
 
 export function Setup() {
   const navigate = useNavigate();
   const [relayUrl, setRelayUrl] = useState("");
   const [savedRelayUrl, setSavedRelayUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [existingIdentityId, setExistingIdentityId] = useState<string | null>(null);
+  const [alias, setAlias] = useState("");
+  const [passphrase, setPassphrase] = useState("");
+  const [confirmPassphrase, setConfirmPassphrase] = useState("");
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     loadRelayUrl().then((u) => {
       setSavedRelayUrl(u);
       if (u) setRelayUrl(u);
     });
+    loadIdentity().then((i) => setExistingIdentityId(i?.identity_id ?? null));
   }, []);
 
   const submit = async (event: FormEvent) => {
@@ -37,10 +44,38 @@ export function Setup() {
     setStatus(`saved ${normalized}`);
   };
 
-  const goCreateIdentity = () => {
-    // Identity-create flow ships in the next iteration alongside the crypto
-    // runtime; for now we route to /identity which shows the empty state.
-    navigate("/identity");
+  const create = async () => {
+    setStatus(null);
+    if (existingIdentityId) {
+      setStatus(`identity already exists: ${existingIdentityId}`);
+      return;
+    }
+    if (!passphrase || passphrase !== confirmPassphrase) {
+      setStatus("passphrase is empty or does not match confirmation");
+      return;
+    }
+    setCreating(true);
+    try {
+      const identityId = `amp:did:key:${crypto.randomUUID()}`;
+      const runtime = cryptoRuntime();
+      const { document, secrets } = await runtime.generateIdentity(identityId);
+      if (alias.trim()) {
+        document.aliases = [alias.trim()];
+      }
+      if (savedRelayUrl) {
+        document.relay_endpoints = [savedRelayUrl];
+      }
+      await runtime.signIdentityDocument(document, secrets);
+      await createIdentity(document, secrets, passphrase);
+      setExistingIdentityId(identityId);
+      setPassphrase("");
+      setConfirmPassphrase("");
+      setStatus(`created local identity ${identityId}`);
+    } catch (error) {
+      setStatus(String(error));
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -91,18 +126,50 @@ export function Setup() {
           in IndexedDB encrypted with a passphrase you choose; public halves
           go into the IdentityDocument that gets published to your relay.
         </p>
-        <div className="flex flex-wrap gap-3">
-          <button onClick={goCreateIdentity} className="aegis-button-primary">
-            Create new identity
-          </button>
-          <button className="aegis-button-secondary" disabled>
-            Import identity (.json)
-          </button>
-        </div>
-        <p className="aegis-mono">
-          identity-create wires up in the next iteration alongside the crypto
-          runtime.
-        </p>
+        {existingIdentityId ? (
+          <div className="space-y-3">
+            <p className="text-sm text-aegis-ok">
+              existing local identity:{" "}
+              <code className="font-mono">{existingIdentityId}</code>
+            </p>
+            <button
+              onClick={() => navigate("/identity")}
+              className="aegis-button-primary"
+            >
+              Open Identity
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <input
+              value={alias}
+              onChange={(e) => setAlias(e.target.value)}
+              placeholder="optional alias (e.g. matt@mesh)"
+              className="aegis-input"
+            />
+            <input
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              type="password"
+              placeholder="passphrase"
+              className="aegis-input"
+            />
+            <input
+              value={confirmPassphrase}
+              onChange={(e) => setConfirmPassphrase(e.target.value)}
+              type="password"
+              placeholder="confirm passphrase"
+              className="aegis-input"
+            />
+            <button
+              onClick={create}
+              className="aegis-button-primary"
+              disabled={creating}
+            >
+              {creating ? "Creating…" : "Create new identity"}
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
-import type { Envelope } from "@aegis/sdk";
+import type { Envelope, PrivatePayload } from "@aegis/sdk";
 
-import { fetchEnvelopes } from "@/lib/relay";
-import { loadIdentity, loadRelayUrl } from "@/lib/storage";
+import { VaultSessionPanel } from "@/components/VaultSessionPanel";
+import { cryptoRuntime } from "@/lib/crypto";
+import { fetchEnvelopes, resolveIdentity } from "@/lib/relay";
+import {
+  consumePrekeySecret,
+  isSessionLocked,
+  loadIdentity,
+  loadPrekeySecrets,
+  loadRelayUrl,
+  loadSecrets,
+} from "@/lib/storage";
 
 export function Inbox() {
   const [identityId, setIdentityId] = useState<string | null>(null);
@@ -10,6 +19,9 @@ export function Inbox() {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [opened, setOpened] = useState<Record<string, PrivatePayload>>({});
+  const [openStatus, setOpenStatus] = useState<Record<string, string>>({});
+  const [locked, setLocked] = useState(isSessionLocked());
 
   useEffect(() => {
     loadIdentity().then((i) => setIdentityId(i?.identity_id ?? null));
@@ -63,6 +75,17 @@ export function Inbox() {
           {error}
         </div>
       )}
+      <VaultSessionPanel
+        onLockedChange={setLocked}
+        onStatus={(message) => {
+          if (message?.startsWith("unlock failed")) {
+            setError(message);
+          } else if (message === "vault unlocked") {
+            setError(null);
+          }
+        }}
+        unlockButtonClassName="aegis-button-secondary"
+      />
 
       {envelopes.length === 0 ? (
         <div className="aegis-surface p-8 text-center text-sm text-slate-500">
@@ -87,12 +110,74 @@ export function Inbox() {
                 </div>
                 <span className="aegis-mono">{env.suite_id}</span>
               </div>
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  className="aegis-button-secondary"
+                  onClick={() => openEnvelope(env)}
+                >
+                  Open
+                </button>
+                {openStatus[env.envelope_id] && (
+                  <span className="aegis-mono">{openStatus[env.envelope_id]}</span>
+                )}
+              </div>
+              {opened[env.envelope_id] && (
+                <div className="mt-3 rounded-md bg-slate-100 p-3 dark:bg-slate-800">
+                  <p className="text-sm font-medium">
+                    subject:{" "}
+                    {opened[env.envelope_id].private_headers.subject ?? "<none>"}
+                  </p>
+                  <pre className="mt-2 whitespace-pre-wrap text-sm">
+                    {opened[env.envelope_id].body.content}
+                  </pre>
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
     </section>
   );
+
+  async function openEnvelope(env: Envelope) {
+    if (locked) {
+      setOpenStatus((prev) => ({ ...prev, [env.envelope_id]: "open failed: vault is locked" }));
+      return;
+    }
+    try {
+      const recipientSecrets = await loadSecrets();
+      const prekeys = await loadPrekeySecrets();
+      const prekeyId = env.used_prekey_ids[0];
+      const matchingPrekey = prekeyId
+        ? prekeys.find((p) => p.key_id === prekeyId)
+        : undefined;
+
+      let senderDocument = undefined;
+      if (relayUrl && env.sender_hint?.startsWith("amp:")) {
+        try {
+          senderDocument = await resolveIdentity(relayUrl, env.sender_hint);
+        } catch {
+          senderDocument = undefined;
+        }
+      }
+
+      const payload = await cryptoRuntime().openHybridPq({
+        envelope: env,
+        recipientSecrets,
+        prekeyKyber768SecretB64: matchingPrekey?.kyber768_secret_key_b64,
+        senderDocument,
+      });
+
+      if (matchingPrekey) {
+        await consumePrekeySecret(matchingPrekey.key_id);
+      }
+
+      setOpened((prev) => ({ ...prev, [env.envelope_id]: payload }));
+      setOpenStatus((prev) => ({ ...prev, [env.envelope_id]: "opened" }));
+    } catch (e) {
+      setOpenStatus((prev) => ({ ...prev, [env.envelope_id]: `open failed: ${String(e)}` }));
+    }
+  }
 }
 
 function EmptyState(props: {
