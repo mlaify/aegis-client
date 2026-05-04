@@ -7,8 +7,10 @@ import { Compose } from "@/pages/Compose";
 import {
   TEST_IDENTITY_DOC,
   TEST_IDENTITY_ID,
+  TEST_PREKEY_RESPONSE,
   TEST_RELAY_URL,
   TEST_SECRETS,
+  TEST_STORE_RESPONSE,
   SUITE_HYBRID_PQ,
 } from "../fixtures";
 
@@ -47,9 +49,7 @@ import * as storage from "@/lib/storage";
 import * as cryptoLib from "@/lib/crypto";
 import * as relay from "@/lib/relay";
 
-const TEST_ENVELOPE_RESPONSE = { envelope_id: "env-1", suite_id: "HybridX25519MlKem768Ed25519MlDsa65" };
-const TEST_STORE_RESPONSE = { relay_id: "relay-envelope-1" };
-const TEST_PREKEY_RESPONSE = { key_id: "prekey-1", public_key_b64: "AAAA" };
+const TEST_ENVELOPE_RESPONSE = { version: 1, envelope_id: "env-1", suite_id: "HybridX25519MlKem768Ed25519MlDsa65" };
 
 function renderCompose() {
   return render(

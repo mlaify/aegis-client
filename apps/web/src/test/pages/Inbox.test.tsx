@@ -159,7 +159,7 @@ describe("Inbox page", () => {
 
   it("consumes the prekey after a successful open", async () => {
     vi.mocked(storage.loadPrekeySecrets).mockResolvedValue([
-      { key_id: "prekey-1", kyber768_secret_key_b64: "AAAA" },
+      { key_id: "prekey-1", algorithm: "AMP-MLKEM768-V1", kyber768_secret_key_b64: "AAAA" },
     ]);
     const user = userEvent.setup();
     renderInbox();

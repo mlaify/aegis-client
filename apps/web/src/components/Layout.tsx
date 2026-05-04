@@ -15,22 +15,22 @@ export function Layout() {
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-aegis-accent font-mono text-sm font-bold text-slate-900">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-aegis-accent font-mono text-sm font-bold text-slate-900">
               Æ
             </span>
-            <div>
+            <div className="hidden sm:block">
               <h1 className="text-base font-semibold tracking-tight">Aegis</h1>
               <p className="aegis-mono">v0.3-alpha · web client</p>
             </div>
           </div>
-          <nav className="flex items-center gap-1">
+          <nav className="flex flex-wrap items-center gap-1">
             {NAV.map(({ to, label }) => (
               <NavLink
                 key={to}
                 to={to}
                 className={({ isActive }) =>
                   [
-                    "rounded-md px-3 py-1.5 text-sm font-medium transition",
+                    "rounded-md px-2.5 py-1.5 text-sm font-medium transition sm:px-3",
                     isActive
                       ? "bg-aegis-accent/10 text-aegis-accentDeep dark:text-aegis-accent"
                       : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
