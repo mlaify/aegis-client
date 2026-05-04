@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/router.tsx","./src/components/Layout.tsx","./src/lib/crypto.ts","./src/lib/relay.ts","./src/lib/storage.ts","./src/pages/Compose.tsx","./src/pages/Identity.tsx","./src/pages/Inbox.tsx","./src/pages/Setup.tsx"],"version":"5.9.3"}
