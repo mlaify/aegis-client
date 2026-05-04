@@ -138,7 +138,10 @@ fn full_seal_open_round_trip_with_prekey() {
         payload["body"]["content"],
         "ml-kem-768 + xchacha20poly1305 round-trip ok"
     );
-    assert_eq!(payload["private_headers"]["subject"], "Hello from FFI roundtrip");
+    assert_eq!(
+        payload["private_headers"]["subject"],
+        "Hello from FFI roundtrip"
+    );
 }
 
 #[test]

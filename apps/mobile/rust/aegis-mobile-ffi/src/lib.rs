@@ -237,8 +237,7 @@ pub fn generate_prekey_bundle(
         return Err(FfiError::InvalidInput("identity_id is empty".into()));
     }
     let id = IdentityId(identity_id);
-    let (bundle, private) =
-        identity_generate_prekey_bundle(&id, count as usize, &key_id_prefix);
+    let (bundle, private) = identity_generate_prekey_bundle(&id, count as usize, &key_id_prefix);
     Ok(PrekeyBundleResult {
         bundle_json: serde_json::to_string(&bundle)?,
         private_json: serde_json::to_string(&private)?,
@@ -248,10 +247,7 @@ pub fn generate_prekey_bundle(
 /// Attach a hybrid signature to the supplied prekey bundle, mirroring
 /// `sign_identity_document` for one-time prekey publishing.
 #[uniffi::export]
-pub fn sign_prekey_bundle(
-    bundle_json: String,
-    secrets_json: String,
-) -> Result<String, FfiError> {
+pub fn sign_prekey_bundle(bundle_json: String, secrets_json: String) -> Result<String, FfiError> {
     let mut bundle: PrekeyBundle = serde_json::from_str(&bundle_json)?;
     let secrets: HybridPqPrivateKeyMaterial = serde_json::from_str(&secrets_json)?;
     let (ed25519_seed, dilithium3_sk) = decode_signing_keys(&secrets)?;
