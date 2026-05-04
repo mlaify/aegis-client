@@ -1,16 +1,31 @@
 import { useEffect, useState } from "react";
 
-import { loadIdentity, type StoredIdentity } from "@/lib/storage";
+import { VaultSessionPanel } from "@/components/VaultSessionPanel";
+import { cryptoRuntime } from "@/lib/crypto";
+import { publishIdentity, publishPrekeys } from "@/lib/relay";
+import {
+  isSessionLocked,
+  loadIdentity,
+  loadRelayUrl,
+  loadSecrets,
+  savePrekeyBundle,
+  type StoredIdentity,
+} from "@/lib/storage";
 
 export function Identity() {
   const [identity, setIdentity] = useState<StoredIdentity | null>(null);
+  const [relayUrl, setRelayUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [locked, setLocked] = useState(isSessionLocked());
 
   useEffect(() => {
     loadIdentity().then((i) => {
       setIdentity(i);
       setLoading(false);
     });
+    loadRelayUrl().then(setRelayUrl);
   }, []);
 
   if (loading) {
@@ -31,6 +46,53 @@ export function Identity() {
       </section>
     );
   }
+
+  const publishIdentityDoc = async () => {
+    if (!relayUrl || !identity.document) {
+      setStatus("missing relay URL or identity document");
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      await publishIdentity(relayUrl, identity.document);
+      setStatus(`published identity to ${relayUrl}`);
+    } catch (error) {
+      setStatus(String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const publishPrekeyBatch = async () => {
+    if (!relayUrl) {
+      setStatus("missing relay URL");
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const secrets = await loadSecrets();
+      const runtime = cryptoRuntime();
+      const { bundle, private: priv } = await runtime.generatePrekeyBundle(
+        identity.identity_id,
+        10,
+        "otp-mlkem768",
+      );
+      await runtime.signPrekeyBundle(bundle, secrets);
+      const published = await publishPrekeys(relayUrl, bundle);
+      await savePrekeyBundle(priv);
+      const refreshed = await loadIdentity();
+      setIdentity(refreshed);
+      setStatus(
+        `published prekeys (inserted=${published.inserted}, skipped=${published.skipped})`,
+      );
+    } catch (error) {
+      setStatus(String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <section className="space-y-6">
@@ -54,22 +116,28 @@ export function Identity() {
           value={`${identity.prekey_secret_count} unclaimed local secrets`}
         />
       </div>
+      <VaultSessionPanel onStatus={setStatus} onLockedChange={setLocked} />
 
       <div className="flex flex-wrap gap-3">
-        <button className="aegis-button-primary" disabled>
+        <button
+          className="aegis-button-primary"
+          disabled={busy || !relayUrl || locked}
+          onClick={publishIdentityDoc}
+        >
           Publish identity
         </button>
-        <button className="aegis-button-secondary" disabled>
+        <button
+          className="aegis-button-secondary"
+          disabled={busy || !relayUrl || locked}
+          onClick={publishPrekeyBatch}
+        >
           Publish prekeys (10)
         </button>
         <button className="aegis-button-secondary" disabled>
           Export
         </button>
       </div>
-      <p className="aegis-mono">
-        publish + prekey actions wire up in the next iteration alongside the
-        crypto runtime.
-      </p>
+      {status && <p className="aegis-mono">{status}</p>}
     </section>
   );
 }

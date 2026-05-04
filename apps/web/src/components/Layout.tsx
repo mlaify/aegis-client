@@ -51,9 +51,8 @@ export function Layout() {
       <footer className="border-t border-slate-200 px-6 py-4 dark:border-slate-800">
         <div className="mx-auto flex max-w-5xl items-center justify-between text-xs text-slate-500 dark:text-slate-500">
           <span>
-            Aegis is a draft post-quantum messaging protocol. This client is
-            scaffolded; crypto and relay integration land in subsequent
-            iterations.
+            Aegis is a draft post-quantum messaging protocol. This web client
+            is local-dev alpha software and not production-ready.
           </span>
           <a
             className="hover:text-aegis-accentDeep dark:hover:text-aegis-accent"

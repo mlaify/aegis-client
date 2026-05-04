@@ -1,6 +1,14 @@
 import { FormEvent, useEffect, useState } from "react";
 
-import { loadIdentity, loadRelayUrl } from "@/lib/storage";
+import { VaultSessionPanel } from "@/components/VaultSessionPanel";
+import { cryptoRuntime } from "@/lib/crypto";
+import {
+  claimOneTimePrekey,
+  pushEnvelope,
+  resolveAlias,
+  resolveIdentity,
+} from "@/lib/relay";
+import { isSessionLocked, loadIdentity, loadRelayUrl, loadSecrets } from "@/lib/storage";
 
 export function Compose() {
   const [to, setTo] = useState("");
@@ -9,6 +17,7 @@ export function Compose() {
   const [identityReady, setIdentityReady] = useState(false);
   const [relayUrl, setRelayUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [locked, setLocked] = useState(isSessionLocked());
 
   useEffect(() => {
     loadIdentity().then((i) => setIdentityReady(i !== null));
@@ -18,11 +27,55 @@ export function Compose() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setStatus(null);
-    // Wired up in the next iteration: claim a one-time prekey from the relay,
-    // hybrid-PQ encrypt the payload, sign + push the envelope to the relay.
-    setStatus(
-      "compose flow not yet wired — crypto + relay integration ships in the next iteration",
-    );
+    if (locked) {
+      setStatus("vault is locked; unlock it before sending");
+      return;
+    }
+    if (!relayUrl) {
+      setStatus("relay URL is not configured");
+      return;
+    }
+    try {
+      const sender = await loadIdentity();
+      if (!sender?.document) {
+        setStatus("identity missing; create one in Setup first");
+        return;
+      }
+      const senderSecrets = await loadSecrets();
+      const recipient = to.trim().startsWith("amp:")
+        ? await resolveIdentity(relayUrl, to.trim())
+        : await resolveAlias(relayUrl, to.trim());
+      const claimed = await claimOneTimePrekey(relayUrl, recipient.identity_id);
+
+      const payload = {
+        private_headers: {
+          subject: subject.trim() || null,
+          thread_id: null,
+          in_reply_to: null,
+        },
+        body: { mime: "text/plain", content: body },
+        attachments: [],
+        extensions: null,
+      };
+
+      const envelope = await cryptoRuntime().sealHybridPq({
+        recipient,
+        payload,
+        senderSecrets,
+        senderHint: sender.identity_id,
+        prekey: {
+          keyId: claimed.key_id,
+          kyber768PublicKeyB64: claimed.public_key_b64,
+        },
+      });
+      const response = await pushEnvelope(relayUrl, envelope);
+      setStatus(`sent envelope ${response.relay_id}`);
+      setBody("");
+      setSubject("");
+      setTo("");
+    } catch (e) {
+      setStatus(String(e));
+    }
   };
 
   if (!identityReady || !relayUrl) {
@@ -50,6 +103,11 @@ export function Compose() {
       </header>
 
       <form onSubmit={submit} className="aegis-surface space-y-4 p-6">
+        <VaultSessionPanel
+          onStatus={setStatus}
+          onLockedChange={setLocked}
+          unlockButtonClassName="aegis-button-secondary"
+        />
         <Field label="To" hint="amp:did:key:… or alias">
           <input
             value={to}
